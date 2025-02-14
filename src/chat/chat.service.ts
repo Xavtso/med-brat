@@ -1,6 +1,4 @@
-// chat.service.ts
-
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Chats } from './model/chat.model';
 import { Model } from 'mongoose';
@@ -16,81 +14,153 @@ export class ChatService {
   ) {}
 
   /**
-   * Створює новий чат (порожній)
+   * Створює новий чат, додаючи до нього перше повідомлення від бота.
+   * @returns {Promise<Chats>} - Об'єкт створеного чату.
    */
   async createChat() {
-    const createdChat = await this.chatModel.create();
+    console.log('Create new chat');
+
+    // Створюємо новий чат із першим повідомленням від бота
+    const createdChat = await this.chatModel.create({
+      messages: [
+        {
+          message: `Hello, I'm your personal MedBrat. What's bothering you? `,
+          sender: 'bot',
+        },
+      ],
+    });
+
     return createdChat;
   }
 
   /**
-   * Додає повідомлення (message) від певного відправника (sender) у конкретний чат (chatId).
+   * Додає повідомлення до конкретного чату.
+   * Якщо повідомлення від користувача, то отримуємо відповідь від сервісу діагностики.
+   * @param {string} chatId - Ідентифікатор чату.
+   * @param {string} message - Текст повідомлення.
+   * @param {string} sender - Відправник повідомлення (user або bot).
+   * @returns {Promise<any>} - Створене повідомлення або пара повідомлень (користувача і бота).
    */
   async addMessage(chatId: string, message: string, sender: string) {
-    const createdMessage = await this.messageModel.create({
-      message: message,
-      sender: sender,
-    });
+    if (sender === 'user') {
+      // Створюємо повідомлення від користувача
+      const createdUserMessage = await this.messageModel.create({
+        message,
+        sender,
+      });
 
-    await this.chatModel
-      .updateOne({ _id: chatId }, { $push: { messages: createdMessage } })
-      .exec();
+      // Додаємо повідомлення користувача в масив `messages` вказаного чату
+      await this.chatModel
+        .updateOne({ _id: chatId }, { $push: { messages: createdUserMessage } })
+        .exec();
 
-    return createdMessage;
+      // Аналізуємо повідомлення користувача, отримуючи відповідь від DiagnosisService
+      const diagnosisResult =
+        await this.diagnosisService.analyzeSymptoms(message);
+
+      // Формуємо відповідь бота, якщо вона доступна
+      const systemText =
+        diagnosisResult.message || JSON.stringify(diagnosisResult);
+
+      // Створюємо відповідне повідомлення від бота
+      const createdBotMessage = await this.messageModel.create({
+        message: systemText,
+        sender: 'bot',
+      });
+
+      // Додаємо повідомлення бота до чату
+      await this.chatModel
+        .updateOne({ _id: chatId }, { $push: { messages: createdBotMessage } })
+        .exec();
+
+      // Повертаємо об'єкт, що містить як повідомлення користувача, так і відповідь бота
+      return { userMessage: createdUserMessage, botMessage: createdBotMessage };
+    } else {
+      // Якщо відправник — не користувач, просто додаємо повідомлення до чату
+      const createdMessage = await this.messageModel.create({
+        message,
+        sender,
+      });
+
+      await this.chatModel
+        .updateOne({ _id: chatId }, { $push: { messages: createdMessage } })
+        .exec();
+
+      return createdMessage;
+    }
   }
 
   /**
-   * Повертає увесь чат із повідомленнями за chatId
+   * Отримує повний об'єкт чату з повідомленнями за його ідентифікатором.
+   * @param {string} chatId - Ідентифікатор чату.
+   * @returns {Promise<Chats>} - Об'єкт чату, якщо знайдено.
+   * @throws {BadRequestException} - Якщо chatId не передано.
    */
   async getChat(chatId: string) {
-    const chat = await this.chatModel
-      .findById(chatId)
-      .populate('messages')
-      .exec();
-    return chat;
+    try {
+      if (!chatId) {
+        throw new BadRequestException('Chat ID is required');
+      }
+
+      // Шукаємо чат за його ID
+      const chat = await this.chatModel.findOne({ _id: chatId });
+
+      return chat;
+    } catch (error) {
+      console.error('Помилка отримання чату:', error);
+      throw error;
+    }
   }
 
   /**
-   * Повертає список усіх чатів (без повідомлень)
+   * Отримує список усіх чатів у базі даних.
+   * Якщо жодного чату не знайдено, створює новий чат і повертає його.
+   * @returns {Promise<Chats[]>} - Масив об'єктів чатів.
    */
   async getChats() {
-    const chats = await this.chatModel.find().exec();
-    return chats;
+    try {
+      console.log('Get all chats');
+
+      // Отримуємо всі чати з бази даних
+      const chats = await this.chatModel.find().exec();
+
+      console.log('Chats:', chats);
+
+      if (!chats || chats.length === 0) {
+        console.log('Chats not found in DB');
+        return [await this.createChat()];
+      }
+
+      return chats;
+    } catch (error) {
+      console.error('Помилка отримання чатів:', error);
+      throw error;
+    }
   }
 
   /**
-   * Викликає діагностику симптомів, зберігає системне повідомлення з результатом,
-   * і повертає рекомендації від DiagnosisService.
+   * Викликає діагностику симптомів через DiagnosisService,
+   * створює повідомлення від бота і додає його до чату.
+   * @param {string} symptoms - Симптоми, що надіслав користувач.
+   * @param {string} chatId - Ідентифікатор чату.
+   * @returns {Promise<any>} - Діагностичний результат та створене повідомлення.
    */
   async getDiagnosis(symptoms: string, chatId: string) {
-    // 1. Викликаємо DiagnosisService, щоб отримати діагноз і рекомендації
+    // Викликаємо сервіс діагностики, щоб отримати результат аналізу симптомів
     const diagnosisResult =
       await this.diagnosisService.analyzeSymptoms(symptoms);
 
-    // diagnosisResult зазвичай міститиме поля на кшталт:
-    // {
-    //    "language_detected": "uk",
-    //    "diagnosis_en": "common cold",
-    //    "advice_uk": "...",
-    //    "message": "..."
-    // }
-    // або іншу структуру, залежно від реалізації.
-
-    // 2. Формуємо текст системного повідомлення
-    //    Наприклад, беремо поле `message` (як короткий підсумок)
+    // Формуємо текст відповіді, що буде відправлений користувачеві
     const systemText =
       diagnosisResult.message || JSON.stringify(diagnosisResult);
 
-    // 3. Створюємо в БД повідомлення від "bot"
+    // Створюємо нове повідомлення від бота з діагностичним результатом
     await this.messageModel.create({
       message: systemText,
       sender: 'bot',
     });
 
-    // 4. Додаємо це повідомлення до потрібного чату
-    await this.addMessage(chatId, systemText, 'bot');
-
-    // 5. Повертаємо користувачеві повний об’єкт із діагнозом
-    return diagnosisResult;
+    // Додаємо це повідомлення в конкретний чат
+    return await this.addMessage(chatId, systemText, 'bot');
   }
 }

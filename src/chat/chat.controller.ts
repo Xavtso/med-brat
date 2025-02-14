@@ -1,26 +1,32 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { ChatService } from './chat.service';
 
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
-  @Post('new')
-  createChat() {
-    return this.chatService.createChat();
+  @Get('new')
+  async createChat() {
+    console.log('Create new chat');
+    return await this.chatService.createChat();
   }
 
-  @Post('message')
-  addMessage(
+  @Post('add/message')
+  async addMessage(
     @Body('chatId') chatId: string,
     @Body('message') message: string,
     @Body('sender') sender: string,
   ) {
-    return this.chatService.addMessage(chatId, message, sender);
+    return await this.chatService.addMessage(chatId, message, sender);
   }
 
-  @Get('chat')
-  getChat(@Body('chatId') chatId: string) {
-    return this.chatService.getChat(chatId);
+  @Get('all')
+  async getChats() {
+    return await this.chatService.getChats();
+  }
+
+  @Get('/get/:chatId')
+  async getChat(@Param('chatId') chatId: string) {
+    return await this.chatService.getChat(chatId);
   }
 }

@@ -10,24 +10,12 @@ async function start() {
 
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe());
-  app.use(
-    cors({
-      origin: '*',
-      allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'Access-Control-Allow-Origin',
-        'Access-Control-Allow-Headers',
-        'Access-Control-Allow-Methods',
-        'Access-Control-Allow-Credentials',
-        'X-Requested-With',
-        'x-access-token',
-        'x-refresh-token',
-        'x-client-id',
-        'multipart/form-data',
-      ],
-    }),
-  );
+  app.enableCors({
+    origin: '*', // Дозволяємо всі походження
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false, // Вимикаємо, оскільки автентифікації немає
+  });
   await app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });

@@ -5,19 +5,13 @@ import { Message, MessageSchema } from './message.model';
 @Schema({ collection: 'chats' })
 export class Chats extends Document {
   @Prop({
-    type: [Message],
+    type: [MessageSchema],
     required: true,
-    schema: MessageSchema,
-    default: [
-      {
-        message: "Hello! I am your personal MedBbrat. What's bothering you?",
-        sender: 'bot',
-      },
-    ],
   })
   messages: Message[];
-  @Prop({ type: Date, required: true, default: Date.now() })
+  @Prop({ type: Date, required: true, default: Date.now })
   lastMessageAt: Date;
+
   toJSON() {
     return {
       lastMessageAt: this.lastMessageAt
