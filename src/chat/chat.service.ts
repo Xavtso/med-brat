@@ -33,6 +33,17 @@ export class ChatService {
     return createdChat;
   }
 
+  async deleteChat(chatId: string) {
+    console.log('Deleting chat with ID:', chatId);
+
+    const deletedChat = await this.chatModel.findByIdAndDelete(chatId);
+    if (!deletedChat) {
+      throw new BadRequestException('Chat not found');
+    }
+
+    return { message: 'Chat deleted successfully', chatId };
+  }
+
   /**
    * Додає повідомлення до конкретного чату.
    * Якщо повідомлення від користувача, то отримуємо відповідь від сервісу діагностики.
